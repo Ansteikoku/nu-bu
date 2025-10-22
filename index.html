@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Nuub‐風キャラクターデモ (Babylon.js)</title>
+  <style>
+    html, body { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+    canvas { width:100%; height:100%; display:block; }
+  </style>
+  <script src="https://cdn.babylonjs.com/babylon.js"></script>
+  <script src="https://cdn.babylonjs.com/loaders/babylon.glTF2FileLoader.js"></script>
+</head>
+<body>
+  <canvas id="renderCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById("renderCanvas");
+    const engine = new BABYLON.Engine(canvas, true);
+
+    const createScene = async function () {
+      const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.8,0.9,1,1);
+
+      // カメラ
+      const camera = new BABYLON.ArcRotateCamera(
+        "camera", 
+        Math.PI/2, Math.PI/4, 
+        5, 
+        new BABYLON.Vector3(0,1,0), // ターゲット
+        scene
+      );
+      camera.attachControl(canvas, true);
+      camera.lowerRadiusLimit = 3;
+      camera.upperRadiusLimit = 10;
+
+      // 光源
+      const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0,1,0), scene);
+      light.intensity = 0.9;
+
+      // 地面
+      const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:20, height:20}, scene);
+      ground.position.y = 0;
+
+      // キャラクターモデル読み込み
+      const result = await BABYLON.SceneLoader.ImportMeshAsync(
+        "", 
+        "models/", 
+        "character.glb", 
+        scene
+      );
+      const player = result.meshes[0];  // ルートメッシュ
+      player.position = new BABYLON.Vector3(0,0.5,0);
+      player.scaling = new BABYLON.Vector3(1,1,1);
+
+      // モデル内にアニメーションが含まれていたらアニメーションを開始
+      if (result.animationGroups.length > 0) {
+        result.animationGroups[0].start(true);  // ループ再生
+      }
+
+      // 移動・ジャンプパラメータ
+      const moveSpeed = 0.1;
+      const jumpSpeed = 0.15;
+      let velocityY = 0;
+      const gravity = -0.01;
+      let onGround = true;
+
+      // キー入力管理
+      const inputMap = {};
+      scene.actionManager = new BABYLON.ActionManager(scene);
+      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(
+        BABYLON.ActionManager.OnKeyDownTrigger,
+        evt => { inputMap[evt.sourceEvent.key] = true; }
+      ));
+      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(
+        BABYLON.ActionManager.OnKeyUpTrigger,
+        evt => { inputMap[evt.sourceEvent.key] = false; }
+      ));
+
+      scene.onBeforeRenderObservable.add(() => {
+        // 移動方向
+        let forward = 0, right = 0;
+        if (inputMap["w"] || inputMap["W"]) forward += 1;
+        if (inputMap["s"] || inputMap["S"]) forward -= 1;
+        if (inputMap["d"] || inputMap["D"]) right += 1;
+        if (inputMap["a"] || inputMap["A"]) right -= 1;
+
+        // 回転（進行方向に向ける）
+        if (forward !== 0 || right !== 0) {
+          const angle = Math.atan2(right, forward);
+          player.rotation.y = angle;
+        }
+
+        // 移動
+        const dir = new BABYLON.Vector3(
+          Math.sin(player.rotation.y)*forward + Math.cos(player.rotation.y)*right,
+          0,
+          Math.cos(player.rotation.y)*forward - Math.sin(player.rotation.y)*right
+        );
+        if (dir.length() > 0) {
+          dir.normalize();
+          player.position.addInPlace(dir.scale(moveSpeed));
+        }
+
+        // ジャンプ
+        if ((inputMap[" "] || inputMap["Spacebar"]) && onGround) {
+          velocityY = jumpSpeed;
+          onGround = false;
+        }
+
+        // 重力・Y移動
+        if (!onGround) {
+          velocityY += gravity;
+          player.position.y += velocityY;
+          if (player.position.y <= 0.5) {
+            player.position.y = 0.5;
+            onGround = true;
+            velocityY = 0;
+          }
+        }
+
+        // カメラ追従
+        camera.setTarget(player.position);
+      });
+
+      return scene;
+    };
+
+    createScene().then(scene => {
+      engine.runRenderLoop(() => scene.render());
+    });
+
+    window.addEventListener("resize", () => {
+      engine.resize();
+    });
+
+  </script>
+</body>
+</html>
