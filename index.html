@@ -1,14 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
-  <meta charset="utf-8" />
-  <title>Nuub‐風キャラクターデモ (Babylon.js)</title>
+  <meta charset="UTF-8" />
+  <title>Robloxノーブ風キャラ Babylong.js</title>
   <style>
-    html, body { width:100%; height:100%; margin:0; padding:0; overflow:hidden; }
+    html, body { margin:0; height:100%; overflow:hidden; }
     canvas { width:100%; height:100%; display:block; }
   </style>
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
-  <script src="https://cdn.babylonjs.com/loaders/babylon.glTF2FileLoader.js"></script>
 </head>
 <body>
   <canvas id="renderCanvas"></canvas>
@@ -16,122 +15,228 @@
     const canvas = document.getElementById("renderCanvas");
     const engine = new BABYLON.Engine(canvas, true);
 
-    const createScene = async function () {
+    const createScene = () => {
       const scene = new BABYLON.Scene(engine);
-      scene.clearColor = new BABYLON.Color4(0.8,0.9,1,1);
+      scene.clearColor = new BABYLON.Color4(0.8, 0.9, 1, 1);
 
-      // カメラ
-      const camera = new BABYLON.ArcRotateCamera(
-        "camera", 
-        Math.PI/2, Math.PI/4, 
-        5, 
-        new BABYLON.Vector3(0,1,0), // ターゲット
-        scene
-      );
+      // カメラ初期化（位置は後で制御）
+      const camera = new BABYLON.FreeCamera("camera", new BABYLON.Vector3(0, 2, -5), scene);
       camera.attachControl(canvas, true);
-      camera.lowerRadiusLimit = 3;
-      camera.upperRadiusLimit = 10;
 
-      // 光源
-      const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0,1,0), scene);
-      light.intensity = 0.9;
+      // ライティング
+      const light = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-1, -2, -1), scene);
+      light.position = new BABYLON.Vector3(20, 40, 20);
+      light.intensity = 0.8;
+      light.shadowEnabled = true;
+
+      const hemiLight = new BABYLON.HemisphericLight("hemiLight", new BABYLON.Vector3(0, 1, 0), scene);
+      hemiLight.intensity = 0.4;
 
       // 地面
       const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:20, height:20}, scene);
-      ground.position.y = 0;
+      ground.receiveShadows = true;
 
-      // キャラクターモデル読み込み
-      const result = await BABYLON.SceneLoader.ImportMeshAsync(
-        "", 
-        "models/", 
-        "character.glb", 
-        scene
-      );
-      const player = result.meshes[0];  // ルートメッシュ
-      player.position = new BABYLON.Vector3(0,0.5,0);
-      player.scaling = new BABYLON.Vector3(1,1,1);
+      // 影生成
+      const shadowGenerator = new BABYLON.ShadowGenerator(1024, light);
+      shadowGenerator.useBlurExponentialShadowMap = true;
+      shadowGenerator.blurKernel = 32;
 
-      // モデル内にアニメーションが含まれていたらアニメーションを開始
-      if (result.animationGroups.length > 0) {
-        result.animationGroups[0].start(true);  // ループ再生
-      }
+      // 体パーツ作成関数
+      const createBox = (name, width, height, depth, color) => {
+        const box = BABYLON.MeshBuilder.CreateBox(name, {width, height, depth}, scene);
+        const mat = new BABYLON.StandardMaterial(name + "Mat", scene);
+        mat.diffuseColor = color;
+        box.material = mat;
+        return box;
+      };
 
-      // 移動・ジャンプパラメータ
-      const moveSpeed = 0.1;
-      const jumpSpeed = 0.15;
-      let velocityY = 0;
-      const gravity = -0.01;
-      let onGround = true;
+      // ノーブ本体パーツ
+      const body = createBox("body", 1, 1.5, 0.5, new BABYLON.Color3(1, 0.8, 0)); // 黄色い胴体
+      body.position.y = 1;
 
-      // キー入力管理
+      // 頭
+      const head = BABYLON.MeshBuilder.CreateSphere("head", {diameter:1}, scene);
+      head.position.y = 2.25;
+      const headMat = new BABYLON.StandardMaterial("headMat", scene);
+      headMat.diffuseColor = new BABYLON.Color3(1, 0.8, 0);
+      head.material = headMat;
+      head.parent = body;
+
+      // 左腕
+      const leftArm = createBox("leftArm", 0.4, 1.2, 0.4, new BABYLON.Color3(1, 0.8, 0));
+      leftArm.position = new BABYLON.Vector3(-0.8, 1.1, 0);
+      leftArm.parent = body;
+
+      // 右腕
+      const rightArm = leftArm.clone("rightArm");
+      rightArm.position.x = 0.8;
+      rightArm.parent = body;
+
+      // 左脚
+      const leftLeg = createBox("leftLeg", 0.5, 1.5, 0.5, new BABYLON.Color3(0, 0, 1));
+      leftLeg.position = new BABYLON.Vector3(-0.3, 0, 0);
+      leftLeg.parent = body;
+
+      // 右脚
+      const rightLeg = leftLeg.clone("rightLeg");
+      rightLeg.position.x = 0.3;
+      rightLeg.parent = body;
+
+      // 影キャスト登録
+      [body, leftArm, rightArm, leftLeg, rightLeg, head].forEach(mesh => {
+        shadowGenerator.addShadowCaster(mesh);
+      });
+
+      // 顔パーツ作成
+      const createEye = (xOffset, yOffset, zOffset) => {
+        const eye = BABYLON.MeshBuilder.CreateSphere("eye", {diameter: 0.15}, scene);
+        const eyeMat = new BABYLON.StandardMaterial("eyeMat", scene);
+        eyeMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+        eye.material = eyeMat;
+        eye.position = new BABYLON.Vector3(xOffset, yOffset, zOffset);
+        eye.parent = head;
+        return eye;
+      };
+
+      const leftEye = createEye(-0.2, 0.1, 0.45);
+      const rightEye = createEye(0.2, 0.1, 0.45);
+
+      const mouth = BABYLON.MeshBuilder.CreatePlane("mouth", {width: 0.4, height: 0.1}, scene);
+      const mouthMat = new BABYLON.StandardMaterial("mouthMat", scene);
+      mouthMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
+      mouth.material = mouthMat;
+      mouth.position = new BABYLON.Vector3(0, -0.25, 0.5);
+      mouth.parent = head;
+
+      // 入力管理
       const inputMap = {};
       scene.actionManager = new BABYLON.ActionManager(scene);
-      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(
-        BABYLON.ActionManager.OnKeyDownTrigger,
-        evt => { inputMap[evt.sourceEvent.key] = true; }
-      ));
-      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(
-        BABYLON.ActionManager.OnKeyUpTrigger,
-        evt => { inputMap[evt.sourceEvent.key] = false; }
-      ));
+      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyDownTrigger, e => {
+        inputMap[e.sourceEvent.key.toLowerCase()] = true;
+      }));
+      scene.actionManager.registerAction(new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnKeyUpTrigger, e => {
+        inputMap[e.sourceEvent.key.toLowerCase()] = false;
+      }));
+
+      // ジャンプ・移動関連変数
+      let isJumping = false;
+      let velocityY = 0;
+      const gravity = -0.02;
+      const jumpSpeed = 0.4;
+      const groundY = 1;
+
+      // 慣性回転・移動変数
+      let currentRotation = 0;
+      let targetRotation = 0;
+      let currentSpeed = 0;
+      const maxSpeed = 0.05;
+      const acceleration = 0.01;
+      const deceleration = 0.02;
+
+      // アニメーション用
+      let walkCycle = 0;
 
       scene.onBeforeRenderObservable.add(() => {
-        // 移動方向
+        // 入力判定
         let forward = 0, right = 0;
-        if (inputMap["w"] || inputMap["W"]) forward += 1;
-        if (inputMap["s"] || inputMap["S"]) forward -= 1;
-        if (inputMap["d"] || inputMap["D"]) right += 1;
-        if (inputMap["a"] || inputMap["A"]) right -= 1;
+        if(inputMap["w"]) forward += 1;
+        if(inputMap["s"]) forward -= 1;
+        if(inputMap["d"]) right += 1;
+        if(inputMap["a"]) right -= 1;
 
-        // 回転（進行方向に向ける）
-        if (forward !== 0 || right !== 0) {
-          const angle = Math.atan2(right, forward);
-          player.rotation.y = angle;
+        const hasMovement = forward !== 0 || right !== 0;
+
+        // ジャンプ判定
+        if ((inputMap[" "] || inputMap["spacebar"]) && !isJumping) {
+          isJumping = true;
+          velocityY = jumpSpeed;
         }
+
+        // 回転補間
+        if (hasMovement) {
+          targetRotation = Math.atan2(right, forward);
+          currentRotation += (targetRotation - currentRotation) * 0.15;
+          currentSpeed = Math.min(currentSpeed + acceleration, maxSpeed);
+        } else {
+          currentSpeed = Math.max(currentSpeed - deceleration, 0);
+        }
+
+        body.rotation.y = currentRotation;
 
         // 移動
-        const dir = new BABYLON.Vector3(
-          Math.sin(player.rotation.y)*forward + Math.cos(player.rotation.y)*right,
-          0,
-          Math.cos(player.rotation.y)*forward - Math.sin(player.rotation.y)*right
-        );
-        if (dir.length() > 0) {
-          dir.normalize();
-          player.position.addInPlace(dir.scale(moveSpeed));
+        if (currentSpeed > 0) {
+          const dir = new BABYLON.Vector3(Math.sin(currentRotation), 0, Math.cos(currentRotation)).scale(currentSpeed);
+          body.position.addInPlace(dir);
+          walkCycle += 0.15;
+        } else {
+          walkCycle = 0;
         }
 
-        // ジャンプ
-        if ((inputMap[" "] || inputMap["Spacebar"]) && onGround) {
-          velocityY = jumpSpeed;
-          onGround = false;
-        }
-
-        // 重力・Y移動
-        if (!onGround) {
+        // ジャンプ処理
+        if (isJumping) {
           velocityY += gravity;
-          player.position.y += velocityY;
-          if (player.position.y <= 0.5) {
-            player.position.y = 0.5;
-            onGround = true;
+          body.position.y += velocityY;
+          if (body.position.y <= groundY) {
+            body.position.y = groundY;
+            isJumping = false;
             velocityY = 0;
           }
         }
 
-        // カメラ追従
-        camera.setTarget(player.position);
+        // アニメーション（腕脚）
+        if (isJumping) {
+          leftArm.rotation.x = -0.7;
+          rightArm.rotation.x = -0.7;
+          leftLeg.rotation.x = 0.3;
+          rightLeg.rotation.x = 0.3;
+        } else if (hasMovement) {
+          const swing = Math.sin(walkCycle) * 0.6;
+          leftArm.rotation.x = swing;
+          rightArm.rotation.x = -swing;
+          leftLeg.rotation.x = -swing;
+          rightLeg.rotation.x = swing;
+        } else {
+          leftArm.rotation.x = 0;
+          rightArm.rotation.x = 0;
+          leftLeg.rotation.x = 0;
+          rightLeg.rotation.x = 0;
+        }
+      });
+
+      // カメラ追従処理
+      scene.onBeforeRenderObservable.add(() => {
+        const targetPosition = body.position.clone();
+        const targetRotationY = body.rotation.y;
+
+        const distanceBack = 4;
+        const height = 2;
+        const cameraTargetPos = new BABYLON.Vector3(
+          targetPosition.x - Math.sin(targetRotationY) * distanceBack,
+          targetPosition.y + height,
+          targetPosition.z - Math.cos(targetRotationY) * distanceBack
+        );
+
+        // カメラ位置を補間
+        camera.position = BABYLON.Vector3.Lerp(camera.position, cameraTargetPos, 0.1);
+
+        // 注視点は頭上
+        const targetLookAt = targetPosition.clone();
+        targetLookAt.y += 1.5;
+        camera.setTarget(targetLookAt);
       });
 
       return scene;
     };
 
-    createScene().then(scene => {
-      engine.runRenderLoop(() => scene.render());
+    const scene = createScene();
+
+    engine.runRenderLoop(() => {
+      scene.render();
     });
 
     window.addEventListener("resize", () => {
       engine.resize();
     });
-
   </script>
 </body>
 </html>
