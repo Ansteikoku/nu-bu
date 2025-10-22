@@ -2,10 +2,10 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8" />
-  <title>完璧なRobloxノーブモデル Babylong.js</title>
+  <title>ヌーブ＋自由カメラ Babylon.js</title>
   <style>
     html, body { margin:0; height:100%; overflow:hidden; }
-    canvas { width:100%; height:100%; display:block; background: #a8d0ff;}
+    canvas { width:100%; height:100%; display:block; }
   </style>
   <script src="https://cdn.babylonjs.com/babylon.js"></script>
 </head>
@@ -17,19 +17,23 @@
 
     const createScene = () => {
       const scene = new BABYLON.Scene(engine);
+      scene.clearColor = new BABYLON.Color4(0.8, 0.9, 1, 1);
 
-      // 背景色
-      scene.clearColor = new BABYLON.Color4(0.66, 0.82, 1.0, 1);
-
-      // カメラ
-      const camera = new BABYLON.ArcRotateCamera("camera", Math.PI / 4, Math.PI / 3, 10, BABYLON.Vector3.Zero(), scene);
+      // ArcRotateCamera（自由回転・ズーム）
+      const camera = new BABYLON.ArcRotateCamera(
+        "camera",
+        Math.PI / 4,
+        Math.PI / 3,
+        10,
+        BABYLON.Vector3.Zero(),
+        scene
+      );
       camera.attachControl(canvas, true);
 
-      // 光源
-      const dirLight = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-1, -2, -1), scene);
-      dirLight.position = new BABYLON.Vector3(20, 40, 20);
-      dirLight.intensity = 0.9;
-      dirLight.shadowEnabled = true;
+      // ライト
+      const light = new BABYLON.DirectionalLight("dirLight", new BABYLON.Vector3(-1, -2, -1), scene);
+      light.position = new BABYLON.Vector3(20, 40, 20);
+      light.intensity = 0.8;
 
       const hemiLight = new BABYLON.HemisphericLight("hemiLight", new BABYLON.Vector3(0, 1, 0), scene);
       hemiLight.intensity = 0.4;
@@ -38,14 +42,12 @@
       const ground = BABYLON.MeshBuilder.CreateGround("ground", {width:20, height:20}, scene);
       ground.receiveShadows = true;
 
-      // シャドウジェネレータ
-      const shadowGen = new BABYLON.ShadowGenerator(2048, dirLight);
-      shadowGen.useBlurExponentialShadowMap = true;
-      shadowGen.blurKernel = 32;
+      // ヌーブ本体ルート
+      const nobuRoot = new BABYLON.TransformNode("nobuRoot", scene);
 
-      // 材料
+      // マテリアル定義
       const yellowMat = new BABYLON.StandardMaterial("yellowMat", scene);
-      yellowMat.diffuseColor = new BABYLON.Color3(1, 0.85, 0);
+      yellowMat.diffuseColor = new BABYLON.Color3(1, 0.8, 0);
 
       const blueMat = new BABYLON.StandardMaterial("blueMat", scene);
       blueMat.diffuseColor = new BABYLON.Color3(0, 0, 1);
@@ -53,73 +55,68 @@
       const blackMat = new BABYLON.StandardMaterial("blackMat", scene);
       blackMat.diffuseColor = new BABYLON.Color3(0, 0, 0);
 
-      // ノーブ親オブジェクト（移動・回転の親）
-      const nobuRoot = new BABYLON.TransformNode("nobuRoot", scene);
-      nobuRoot.position.y = 1;
-
-      // 胴体（黄色の円柱）
-      const body = BABYLON.MeshBuilder.CreateCylinder("body", {
-        diameterTop: 1.2,
-        diameterBottom: 1.2,
-        height: 2.5,
-        tessellation: 24,
-        subdivisions: 1
-      }, scene);
-      body.material = yellowMat;
-      body.parent = nobuRoot;
-
-      // 頭（黄色の球体）
-      const head = BABYLON.MeshBuilder.CreateSphere("head", {
-        diameter: 1.3,
-        segments: 24
+      // 角丸ボックス（頭）
+      const head = BABYLON.MeshBuilder.CreateRoundedBox("head", {
+        width: 1.3,
+        height: 1.3,
+        depth: 1.1,
+        radius: 0.3,
+        smoothness: 6
       }, scene);
       head.material = yellowMat;
-      head.position.y = 1.75 + 1.3 / 2;
+      head.position.y = 2.6;
       head.parent = nobuRoot;
 
-      // 目（黒い球体 ×2）
+      // 体
+      const body = BABYLON.MeshBuilder.CreateBox("body", {width: 1, height: 1.5, depth: 0.5}, scene);
+      body.material = yellowMat;
+      body.position.y = 1;
+      body.parent = nobuRoot;
+
+      // 腕
+      const leftArm = BABYLON.MeshBuilder.CreateBox("leftArm", {width: 0.4, height: 1.2, depth: 0.4}, scene);
+      leftArm.material = yellowMat;
+      leftArm.position = new BABYLON.Vector3(-0.8, 1.1, 0);
+      leftArm.parent = nobuRoot;
+
+      const rightArm = leftArm.clone("rightArm");
+      rightArm.position.x = 0.8;
+      rightArm.parent = nobuRoot;
+
+      // 脚
+      const leftLeg = BABYLON.MeshBuilder.CreateBox("leftLeg", {width: 0.5, height: 1.5, depth: 0.5}, scene);
+      leftLeg.material = blueMat;
+      leftLeg.position = new BABYLON.Vector3(-0.3, 0, 0);
+      leftLeg.parent = nobuRoot;
+
+      const rightLeg = leftLeg.clone("rightLeg");
+      rightLeg.position.x = 0.3;
+      rightLeg.parent = nobuRoot;
+
+      // 目（球）
       const createEye = (x) => {
         const eye = BABYLON.MeshBuilder.CreateSphere("eye", {diameter: 0.25}, scene);
         eye.material = blackMat;
-        eye.position = new BABYLON.Vector3(x, head.position.y + 0.15, 0.65);
+        eye.position = new BABYLON.Vector3(x, head.position.y + 0.15, head.position.z / 2 + 0.05);
         eye.parent = nobuRoot;
         return eye;
       };
       createEye(-0.3);
       createEye(0.3);
 
-      // 口（黒い平面）
-      const mouth = BABYLON.MeshBuilder.CreatePlane("mouth", {width: 0.7, height: 0.2}, scene);
+      // 口（丸ディスク）
+      const mouth = BABYLON.MeshBuilder.CreateDisc("mouth", {
+        radius: 0.35,
+        tessellation: 32
+      }, scene);
       mouth.material = blackMat;
-      mouth.position = new BABYLON.Vector3(0, head.position.y - 0.4, 0.7);
+      mouth.position = new BABYLON.Vector3(0, head.position.y - 0.4, head.position.z / 2 + 0.05);
+      mouth.rotation.x = Math.PI;
       mouth.parent = nobuRoot;
 
-      // 腕（黄色のボックス ×2）
-      const createArm = (x) => {
-        const arm = BABYLON.MeshBuilder.CreateBox("arm", {width: 0.35, height: 1.3, depth: 0.35}, scene);
-        arm.material = yellowMat;
-        arm.position = new BABYLON.Vector3(x, 0.85, 0);
-        arm.parent = nobuRoot;
-        return arm;
-      };
-      createArm(-0.9);
-      createArm(0.9);
+      // 影（シャドウ）セットアップ（必要なら）
 
-      // 脚（青いボックス ×2）
-      const createLeg = (x) => {
-        const leg = BABYLON.MeshBuilder.CreateBox("leg", {width: 0.5, height: 1.8, depth: 0.5}, scene);
-        leg.material = blueMat;
-        leg.position = new BABYLON.Vector3(x, -1.25, 0);
-        leg.parent = nobuRoot;
-        return leg;
-      };
-      createLeg(-0.4);
-      createLeg(0.4);
-
-      // 影登録
-      scene.meshes.forEach(m => {
-        if(m !== ground) shadowGen.addShadowCaster(m);
-      });
+      // ここに入力・移動やアニメーションのコードを追加できます
 
       return scene;
     };
